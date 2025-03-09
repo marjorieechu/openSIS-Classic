@@ -1,0 +1,108 @@
+version: '3.9'
+
+services:
+  opensis-db:
+    image: mariadb:10.5
+    container_name: opensis-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: "secrets#$"
+      MYSQL_DATABASE: "openSIS"
+      MYSQL_USER: "openSIS_rw"
+      MYSQL_PASSWORD: "Op3nS!S"
+    volumes:
+      - db_data:/var/lib/mysql  # Persist database data
+      - ./MYSQL/mysql-init:/docker-entrypoint-initdb.d  # Init scripts
+      - ./MYSQL/mysql-config:/etc/mysql/conf.d/strict_mode.cnf  # Custom MySQL config
+    networks:
+      opensis-nw:
+        aliases:
+          - opensis
+
+  opensis-ui:
+    image: opensis-i
+    container_name: opensis-ui
+    depends_on:
+      - opensis-db
+    ports:
+      - "8080:80"
+    networks:
+      opensis-nw:
+        aliases:
+          - opensis
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+       - "./prometheus.yml:/etc/prometheus/prometheus.yml"
+       - "./rules.yml:/etc/prometheus/rules.yml"
+    networks:
+      opensis-nw:
+        aliases:
+          - prometheus
+    ports:
+      - "9090:9090"
+
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    networks:
+      opensis-nw:
+        aliases:
+          - node-exporter
+    ports:
+      - "9100:9100"
+    
+  alert-manager:
+    image: prom/alertmanager
+    container_name: alert-manager
+    volumes:
+      - "./alertmanager.yml:/alertmanager/alertmanager.yml"
+    networks:
+      - opensis-nw
+    ports:
+      - 9093:9093
+
+  grafana_postgres:
+    container_name: grafana_postgres
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: grafana_db
+      POSTGRES_USER: grafana_usr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Use .env file for security
+    volumes:
+      - postgres-storage:/var/lib/postgresql/data
+    networks:
+      opensis-nw:
+        aliases:
+          - grafana_postgres
+
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_DATABASE_TYPE: postgres
+      GF_DATABASE_HOST: grafana_postgres
+      GF_DATABASE_NAME: grafana_db
+      GF_DATABASE_USER: grafana_usr
+      GF_DATABASE_PASSWORD: ${GF_DATABASE_PASSWORD}  # Use .env file for security
+    ports:
+      - '3000:3000'
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      opensis-nw:
+        aliases:
+          - grafana
+
+networks:
+  opensis-nw:
+    driver: bridge
+
+volumes:
+  db_data:  # Named volume for MariaDB persistence
+  grafana-storage: {}
+  postgres-storage: {}
